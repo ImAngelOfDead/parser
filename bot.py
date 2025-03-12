@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import time, os
+import re
 
 TELEGRAM_BOT_TOKEN = ""
 TELEGRAM_CHAT_ID = ""
@@ -150,12 +151,114 @@ def sovsport_get_news_content(news_url):
         return content_div.get_text(separator="\n", strip=True)
     return ""
 
+def tass_get_news_list(page):
+    base_url = "https://tass.ru"
+    page_url = f"{base_url}/sport" if page == 1 else f"{base_url}/sport?page={page}"
+    response = requests.get(page_url, headers=HEADERS)
+    if response.status_code != 200:
+        return []
+    soup = BeautifulSoup(response.text, "html.parser")
+    news = []
+    container = soup.find("div", id="infinite_listing")
+    if not container:
+        return news
+    for a in container.find_all("a", class_="tass_pkg_link-v5WdK"):
+        link = a.get("href")
+        if link.startswith("/"):
+            link = base_url + link
+        title_tag = a.find("span", class_="tass_pkg_title-xVUT1")
+        title = title_tag.get_text(strip=True) if title_tag else a.get("title", "")
+        news.append({"link": link, "title": title})
+    return news
+
+def tass_get_news_content(news_url):
+    response = requests.get(news_url, headers=HEADERS)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    content_div = soup.find("article", class_="Content_wrapper__DiAVL")
+    if content_div:
+        for tag in content_div.find_all(["script", "style"]):
+            tag.decompose()
+        return content_div.get_text(separator="\n", strip=True)
+    return ""
+
+def rbk_get_news_list(page):
+    base_url = "https://sportrbc.ru"
+    url = base_url + "/news" if page == 1 else f"{base_url}/news/page{page}"
+    resp = requests.get(url, headers=HEADERS)
+    if resp.status_code != 200:
+        return []
+    soup = BeautifulSoup(resp.text, "html.parser")
+    news = []
+    container = soup.find("div", class_="g-overflow")
+    if not container:
+        return news
+    for a in container.find_all("a", class_="item__link rm-cm-item-link js-rm-central-column-item-link"):
+        link = a.get("href")
+        if link.startswith("/"):
+            link = base_url + link
+        title_elem = a.find("span", class_="item__title rm-cm-item-text js-rm-central-column-item-text")
+        title = title_elem.get_text(strip=True) if title_elem else a.get("title", "")
+        news.append({"link": link, "title": title})
+    return news
+
+def rbk_get_news_content(news_url):
+    resp = requests.get(news_url, headers=HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    content_div = soup.find("div", class_="article__text")
+    return content_div.get_text(separator="\n", strip=True) if content_div else ""
+def ria_get_news_list(page):
+    base_url = "https://sn.ria.ru/sport/"
+    page_url = base_url if page == 1 else f"{base_url}page/{page}/"
+    r = requests.get(page_url, headers=HEADERS)
+    if r.status_code != 200:
+        return []
+    soup = BeautifulSoup(r.text, "html.parser")
+    news = []
+    container = soup.find("div", class_="list list-tags")
+    if not container:
+        return news
+    for item in container.find_all("div", class_="list-item"):
+        title_link = item.find("a", class_="list-item__title")
+        if not title_link:
+            continue
+        link = title_link.get("href")
+        if link and not link.startswith("http"):
+            link = "https://sn.ria.ru" + link
+        title = title_link.get_text(strip=True)
+        news.append({"link": link, "title": title})
+    return news
+
+def ria_get_news_content(news_url):
+    r = requests.get(news_url, headers=HEADERS)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    content_div = soup.find("div", class_="article__text")
+    if content_div:
+        for tag in content_div.find_all(["script", "style"]):
+            tag.decompose()
+        return content_div.get_text(separator="\n", strip=True)
+    return ""
+
 PARSERS = [
     {"name": "Championat", "base_url": "https://www.championat.ru", "get_list": championat_get_news_list, "get_content": championat_get_news_content},
     {"name": "Sport-Express", "base_url": "https://www.sport-express.ru", "get_list": sex_get_news_list, "get_content": sex_get_news_content},
     {"name": "MatchTV", "base_url": "https://matchtv.ru", "get_list": matchtv_get_news_list, "get_content": matchtv_get_news_content},
-    {"name": "Sovsport", "base_url": "https://www.sovsport.ru", "get_list": sovsport_get_news_list, "get_content": sovsport_get_news_content}
+    {"name": "Sovsport", "base_url": "https://www.sovsport.ru", "get_list": sovsport_get_news_list, "get_content": sovsport_get_news_content},
+    {"name": "TASS", "base_url": "https://tass.ru", "get_list": tass_get_news_list, "get_content": tass_get_news_content},
+    {"name": "SportRbc", "base_url": "https://sportrbc.ru/", "get_list": rbk_get_news_list, "get_content": rbk_get_news_content},
+    {"name": "RIA Sport", "base_url": "https://sn.ria.ru/sport/", "get_list": ria_get_news_list, "get_content": ria_get_news_content}
 ]
+
+
+def clean_content(text):
+    # Удаляем URL-адреса изображений (jpg, jpeg, png, gif, webp)
+    text = re.sub(r'https?://\S+\.(?:jpg|jpeg|png|gif|webp)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+', ' ', text)
+
+    return text.strip()
+
 
 def parse_and_send_all_news():
     sent_links = load_sent_links()
@@ -170,11 +273,12 @@ def parse_and_send_all_news():
                 if news["link"] in sent_links:
                     continue
                 try:
-                    news["content"] = parser["get_content"](news["link"])
+                    content = parser["get_content"](news["link"])
                 except Exception as e:
-                    print(f"Error: {news['link']}: {e}")
-                    news["content"] = ""
-                message = f'<a href="{news["link"]}"><b>{news["title"]}</b></a>\n\n{news["content"][:4000]}'
+                    print(f"Error fetching content from {news['link']}: {e}")
+                    content = ""
+                content = clean_content(content)
+                message = f'<a href="{news["link"]}"><b>{news["title"]}</b></a>\n\n{content[:4000]}'
                 send_telegram_message(message)
                 print(f"Sent: {news['title']}")
                 sent_links.add(news["link"])
@@ -183,6 +287,7 @@ def parse_and_send_all_news():
             page += 1
             time.sleep(1)
     print("All sites parsed.")
+
 
 def main():
     while True:
