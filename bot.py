@@ -5,12 +5,11 @@ import time, os, re
 from datetime import datetime, timedelta
 import dateparser
 
-TELEGRAM_BOT_TOKEN = "7681194402:AAEbLI5OOZwrAy61ZcHAiLoaJ4EJyVJCPOQ"
-TELEGRAM_CHAT_ID = "-1002667621064"
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"}
 SENT_FILE = "sent_news.txt"
 
-# Месяцы для разбора дат, если понадобится.
 MONTHS_RU = {
     'января': 1,
     'февраля': 2,
@@ -26,7 +25,7 @@ MONTHS_RU = {
     'декабря': 12
 }
 
-# Функции для работы с файлом отправленных ссылок
+
 def load_sent_links():
     if os.path.exists(SENT_FILE):
         with open(SENT_FILE, "r", encoding="utf-8") as f:
@@ -37,7 +36,7 @@ def save_sent_link(link):
     with open(SENT_FILE, "a", encoding="utf-8") as f:
         f.write(link + "\n")
 
-# Обработка Telegram 429 (Too Many Requests)
+
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
@@ -49,7 +48,7 @@ def send_telegram_message(text):
             return
         except requests.exceptions.HTTPError as e:
             if r.status_code == 429:
-                # Если есть Retry-After, ждем указанное время, иначе 10 секунд
+
                 retry_after = int(r.headers.get("Retry-After", 10))
                 print(f"Telegram 429: waiting {retry_after} seconds...")
                 time.sleep(retry_after)
@@ -57,20 +56,16 @@ def send_telegram_message(text):
                 print(f"Telegram error: {e}")
                 break
 
-# Для каждой функции get_list обновляем логику так, чтобы она
-# фильтровала и сортировала новости по времени (только свежие новости, не более 20 минут назад).
-
 FRESH_INTERVAL = timedelta(minutes=20)
 
 def championat_get_news_list(page):
     base_url = "https://www.championat.ru"
-    page_url = f"{base_url}/news/1.html"  # Здесь фиксированная страница, как в оригинале
+    page_url = f"{base_url}/news/1.html" 
     response = requests.get(page_url, headers=HEADERS)
     if response.status_code != 200:
         return []
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Извлекаем дату из шапки списка
     head_div = soup.find("div", class_="news-items__head")
     if head_div:
         date_str = head_div.get_text(strip=True)
